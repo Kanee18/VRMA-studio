@@ -1,0 +1,17 @@
+# Dependencies & build output
+node_modules
+dist
+dist-ssr
+*.local
+
+# Tauri (Rust build artifacts)
+src-tauri/target
+src-tauri/gen
+
+# Editor & OS noise
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
