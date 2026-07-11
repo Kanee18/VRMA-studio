@@ -9,9 +9,9 @@ Open a `.vrma` file, watch it play on a VRM avatar instantly, cut and trim it on
 timeline, and export a spec-compliant `.vrma` — no Blender, no Unity, and no rigging
 knowledge required.
 
-<!-- Screenshot: replace with a real capture of the app.
-![VRMA Studio](docs/screenshot.png)
--->
+
+![VRMA Studio](icon/vrma_studio_logo.png)
+
 
 ## Who is this for?
 
