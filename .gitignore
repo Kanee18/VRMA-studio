@@ -15,5 +15,3 @@ src-tauri/gen
 *.njsproj
 *.sln
 *.sw?
-
-CLAUDE.md
