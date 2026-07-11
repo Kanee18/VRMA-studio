@@ -10,7 +10,7 @@ timeline, and export a spec-compliant `.vrma` — no Blender, no Unity, and no r
 knowledge required.
 
 
-![VRMA Studio](icon/preview/Screenshot 2026-07-11 091046.png)
+![VRMA Studio](icon/Screenshot 2026-07-11 091046.png)
 
 
 ## Who is this for?
