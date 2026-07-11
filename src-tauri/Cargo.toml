@@ -1,10 +1,9 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Desktop editor for VRM Animation (.vrma) files"
+authors = ["Kanee18"]
+repository = "https://github.com/Kanee18/VRMA-studio"
 edition = "2021"
 rust-version = "1.77.2"
 
