@@ -5,6 +5,7 @@ import { trimDocument } from '../core/operations/trim';
 import { parseVrma } from '../core/vrma/parser';
 import { writeVrma } from '../core/vrma/writer';
 import type { AnimationDocument } from '../core/vrma/types';
+import { FPS } from './timecode';
 
 /** A segment of the source animation, in source-time seconds. Segments play sequentially. */
 export interface Clip {
@@ -22,6 +23,21 @@ const nextClipId = () => ++clipIdCounter;
 /** Don't create/keep segments shorter than this. */
 const MIN_CLIP_LENGTH = 0.02;
 
+/** Timeline zoom bounds, in pixels per second. */
+const MIN_ZOOM = 20;
+const MAX_ZOOM = 1000;
+
+/** Timeline-time positions of every clip boundary (edit points), including 0 and the end. */
+function editPoints(clips: Clip[]): number[] {
+  const points = [0];
+  let t = 0;
+  for (const clip of clips) {
+    t += clip.out - clip.in;
+    points.push(t);
+  }
+  return points;
+}
+
 /** Apply the clip list to the source: trim each segment, concatenate the survivors. */
 function buildEditedDocument(source: AnimationDocument, clips: Clip[]): AnimationDocument {
   const parts = clips.map((clip) => trimDocument(source, clip.in, clip.out));
@@ -36,6 +52,10 @@ interface StudioState {
   clips: Clip[];
   selectedClipId: number | null;
   tool: TimelineTool;
+  /** Magnetic snapping (frame grid + edit points + playhead) for timeline edits. */
+  snap: boolean;
+  /** Timeline zoom in pixels per second. */
+  pixelsPerSecond: number;
   /** Undo/redo history of clip lists (document is derived from them). */
   past: Clip[][];
   future: Clip[][];
@@ -60,9 +80,21 @@ interface StudioState {
   /** Razor cut: split whichever clip covers the given timeline time. */
   splitClipAt: (timelineTime: number) => void;
   splitAtPlayhead: () => void;
+  /** Ripple-trim the clip under the playhead: Q removes its head up to the playhead. */
+  rippleTrimIn: () => void;
+  /** Ripple-trim the clip under the playhead: W removes its tail from the playhead. */
+  rippleTrimOut: () => void;
   deleteSelectedClip: () => void;
   selectClip: (id: number | null) => void;
   setTool: (tool: TimelineTool) => void;
+  toggleSnap: () => void;
+  setZoom: (pixelsPerSecond: number) => void;
+  /** Move the playhead by whole frames of the editing timebase (pauses playback). */
+  stepFrames: (frames: number) => void;
+  goToStart: () => void;
+  goToEnd: () => void;
+  /** Jump the playhead to the previous (-1) or next (+1) edit point. */
+  jumpToEdit: (direction: -1 | 1) => void;
   undo: () => void;
   redo: () => void;
   setViewportError: (error: string | null) => void;
@@ -99,6 +131,8 @@ export const useStudioStore = create<StudioState>()((set, get) => {
     clips: [],
     selectedClipId: null,
     tool: 'select',
+    snap: true,
+    pixelsPerSecond: 120,
     past: [],
     future: [],
     sourceFileName: null,
@@ -186,6 +220,39 @@ export const useStudioStore = create<StudioState>()((set, get) => {
 
     splitAtPlayhead: () => get().splitClipAt(get().playhead),
 
+    rippleTrimIn: () => {
+      const { clips, playhead } = get();
+      let start = 0;
+      for (const clip of clips) {
+        const length = clip.out - clip.in;
+        if (playhead > start && playhead < start + length) {
+          const nextIn = clip.in + (playhead - start);
+          if (clip.out - nextIn < MIN_CLIP_LENGTH) return;
+          commitClips(clips.map((c) => (c.id === clip.id ? { ...c, in: nextIn } : c)));
+          // The removed head ripples away; the playhead lands on the new edit point.
+          set({ playhead: start, selectedClipId: clip.id });
+          return;
+        }
+        start += length;
+      }
+    },
+
+    rippleTrimOut: () => {
+      const { clips, playhead } = get();
+      let start = 0;
+      for (const clip of clips) {
+        const length = clip.out - clip.in;
+        if (playhead > start && playhead < start + length) {
+          const nextOut = clip.in + (playhead - start);
+          if (nextOut - clip.in < MIN_CLIP_LENGTH) return;
+          commitClips(clips.map((c) => (c.id === clip.id ? { ...c, out: nextOut } : c)));
+          set({ selectedClipId: clip.id });
+          return;
+        }
+        start += length;
+      }
+    },
+
     deleteSelectedClip: () => {
       const { clips, selectedClipId } = get();
       if (selectedClipId === null || clips.length <= 1) return;
@@ -196,6 +263,38 @@ export const useStudioStore = create<StudioState>()((set, get) => {
     selectClip: (selectedClipId) => set({ selectedClipId }),
 
     setTool: (tool) => set({ tool }),
+
+    toggleSnap: () => set((state) => ({ snap: !state.snap })),
+
+    setZoom: (pixelsPerSecond) =>
+      set({ pixelsPerSecond: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pixelsPerSecond)) }),
+
+    stepFrames: (frames) => {
+      const duration = get().document?.duration ?? 0;
+      if (duration <= 0) return;
+      const currentFrame = Math.round(get().playhead * FPS);
+      const next = Math.max(0, currentFrame + frames) / FPS;
+      set({ isPlaying: false, playhead: Math.min(next, duration) });
+    },
+
+    goToStart: () => set({ isPlaying: false, playhead: 0 }),
+
+    goToEnd: () => {
+      const duration = get().document?.duration ?? 0;
+      set({ isPlaying: false, playhead: duration });
+    },
+
+    jumpToEdit: (direction) => {
+      const { clips, playhead } = get();
+      if (clips.length === 0) return;
+      const points = editPoints(clips);
+      const epsilon = 1e-4;
+      const target =
+        direction > 0
+          ? points.find((p) => p > playhead + epsilon)
+          : [...points].reverse().find((p) => p < playhead - epsilon);
+      if (target !== undefined) set({ isPlaying: false, playhead: target });
+    },
 
     undo: () => {
       const { past, clips } = get();
